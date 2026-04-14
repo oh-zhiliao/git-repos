@@ -122,7 +122,8 @@ export class KnowledgeGenerator {
   async generate(
     repoName: string,
     repoPath: string,
-    maxTopics = 10
+    maxTopics = 10,
+    language = "Chinese"
   ): Promise<void> {
     // Validate repoName to prevent path traversal
     if (!SAFE_REPO_NAME.test(repoName)) {
@@ -141,7 +142,7 @@ export class KnowledgeGenerator {
 
     inProgressRepos.add(repoName);
     try {
-      await this._generate(repoName, repoPath, maxTopics, lockPath);
+      await this._generate(repoName, repoPath, maxTopics, language, lockPath);
     } finally {
       inProgressRepos.delete(repoName);
       this.releaseFileLock(lockPath);
@@ -152,6 +153,7 @@ export class KnowledgeGenerator {
     repoName: string,
     repoPath: string,
     maxTopics: number,
+    language: string,
     lockPath: string
   ): Promise<void> {
     // Collect context
@@ -166,7 +168,8 @@ export class KnowledgeGenerator {
       const { indexContent, topicPlan } = await this.generateIndex(
         repoName,
         context,
-        maxTopics
+        maxTopics,
+        language
       );
 
       // Write index.md to tmp dir
@@ -179,7 +182,8 @@ export class KnowledgeGenerator {
             repoName,
             topic,
             context,
-            indexContent
+            indexContent,
+            language
           );
           writeFileSync(join(tmpDir, topic.filename), topicContent, "utf-8");
         } catch (err) {
@@ -329,11 +333,16 @@ export class KnowledgeGenerator {
   private async generateIndex(
     repoName: string,
     context: string,
-    maxTopics: number
+    maxTopics: number,
+    language: string
   ): Promise<{ indexContent: string; topicPlan: TopicPlan[] }> {
+    const now = new Date().toISOString();
     const system = `You are a technical documentation expert. Your task is to analyze a code repository and produce a comprehensive knowledge overview document.
 
-The document should be 100-200 lines of Markdown with YAML frontmatter including: title, description, generated_at (ISO timestamp), and generator_model fields.
+Write ALL content in ${language}. Use ${language} for headings, descriptions, and explanations. Code snippets and technical identifiers (file paths, function names, etc.) stay in their original form.
+
+The document should be 100-200 lines of Markdown with YAML frontmatter including: title, description, generated_at, and generator_model fields.
+Use exactly this value for generated_at: "${now}"
 
 After the main content, include a TOPIC_PLAN section listing specific topic documents to create as deep-dives. Format it exactly as:
 
@@ -341,7 +350,7 @@ TOPIC_PLAN:
 - filename.md: Brief description of what this topic covers
 - another-topic.md: Another topic description
 
-Include at most ${maxTopics} topics. Each filename must end in .md and use kebab-case. Topics should cover distinct aspects like architecture, API reference, data models, deployment, etc.
+Include at most ${maxTopics} topics. Each filename must end in .md and use kebab-case (in English). Topic descriptions should be in ${language}.
 
 The TOPIC_PLAN section must be at the very end, after all other content.`;
 
@@ -404,11 +413,16 @@ ${context}`;
     repoName: string,
     topic: TopicPlan,
     context: string,
-    indexContent: string
+    indexContent: string,
+    language: string
   ): Promise<string> {
+    const now = new Date().toISOString();
     const system = `You are a technical documentation expert. Your task is to produce a focused, deep-dive document about a specific aspect of a code repository.
 
-The document should be 50-150 lines of Markdown with YAML frontmatter including: title, description, topic, generated_at (ISO timestamp), and generator_model fields.
+Write ALL content in ${language}. Use ${language} for headings, descriptions, and explanations. Code snippets and technical identifiers (file paths, function names, etc.) stay in their original form.
+
+The document should be 50-150 lines of Markdown with YAML frontmatter including: title, description, topic, generated_at, and generator_model fields.
+Use exactly this value for generated_at: "${now}"
 
 Focus specifically on the topic described. Be precise and technical. Include code examples where relevant.`;
 

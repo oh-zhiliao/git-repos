@@ -15,6 +15,8 @@ interface CommandDeps {
   knowledgeDir: string | null;
   knowledgeGenerator: KnowledgeGenerator | null;
   knowledgeSync: KnowledgeSync | null;
+  maxTopics: number;
+  language: string;
 }
 
 export function createCommandHandler(deps: CommandDeps): PluginCommandHandler {
@@ -74,7 +76,7 @@ export function createCommandHandler(deps: CommandDeps): PluginCommandHandler {
             if (!repoPath) continue;
 
             try {
-              await deps.knowledgeGenerator.generate(repo.name, repoPath);
+              await deps.knowledgeGenerator.generate(repo.name, repoPath, deps.maxTopics, deps.language);
               results.push(`✅ ${repo.name}: 生成成功`);
             } catch (e: any) {
               results.push(`❌ ${repo.name}: ${e.message}`);

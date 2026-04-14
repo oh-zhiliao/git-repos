@@ -114,27 +114,41 @@ export default class GitReposPlugin implements ToolPlugin {
       knowledgeDir: this.knowledgeDir,
       knowledgeGenerator: null,
       knowledgeSync: null,
+      maxTopics: this.config.knowledge?.generation?.max_topics ?? 10,
+      language: this.config.knowledge?.generation?.language ?? "Chinese",
     });
 
     // Init knowledge system
     const kc = this.config.knowledge;
     if (kc) {
-      this.knowledgeSync = new KnowledgeSync({
-        repoUrl: kc.repo_url,
-        branch: kc.branch,
-        localDir: kc.local_dir,
-        sshKeyPath: this.config.ssh_key_path,
-        pullIntervalMinutes: kc.sync?.pull_interval_minutes ?? 30,
-        onReload: () => this.loadKnowledge(),
-      });
+      // If repo_url == local_dir, it's a local-only repo — skip sync, just use the dir directly
+      const isLocalOnly = kc.repo_url === kc.local_dir;
 
-      try {
-        await this.knowledgeSync.init();
-        this.knowledgeDir = kc.local_dir;
-        console.log(`[${this.name}] Knowledge repo initialized at ${kc.local_dir}`);
-      } catch (e: any) {
-        console.warn(`[${this.name}] Knowledge repo init failed: ${e.message}. Continuing without knowledge.`);
-        this.knowledgeDir = null;
+      if (isLocalOnly) {
+        if (existsSync(join(kc.local_dir, ".git"))) {
+          this.knowledgeDir = kc.local_dir;
+          console.log(`[${this.name}] Using local knowledge repo at ${kc.local_dir}`);
+        } else {
+          console.warn(`[${this.name}] Knowledge local_dir ${kc.local_dir} has no .git — skipping knowledge.`);
+        }
+      } else {
+        this.knowledgeSync = new KnowledgeSync({
+          repoUrl: kc.repo_url,
+          branch: kc.branch,
+          localDir: kc.local_dir,
+          sshKeyPath: this.config.ssh_key_path,
+          pullIntervalMinutes: kc.sync?.pull_interval_minutes ?? 30,
+          onReload: () => this.loadKnowledge(),
+        });
+
+        try {
+          await this.knowledgeSync.init();
+          this.knowledgeDir = kc.local_dir;
+          console.log(`[${this.name}] Knowledge repo initialized at ${kc.local_dir}`);
+        } catch (e: any) {
+          console.warn(`[${this.name}] Knowledge repo init failed: ${e.message}. Continuing without knowledge.`);
+          this.knowledgeDir = null;
+        }
       }
     }
 
@@ -203,6 +217,8 @@ export default class GitReposPlugin implements ToolPlugin {
       knowledgeDir: this.knowledgeDir,
       knowledgeGenerator: this.knowledgeGenerator,
       knowledgeSync: this.knowledgeSync,
+      maxTopics: this.config.knowledge?.generation?.max_topics ?? 10,
+      language: this.config.knowledge?.generation?.language ?? "Chinese",
     });
   }
 
@@ -300,7 +316,7 @@ export default class GitReposPlugin implements ToolPlugin {
       tools.push({
         name: "get_repo_knowledge",
         description:
-          "Get curated documentation about a repository. Call with just repo name for a comprehensive overview (architecture, structure, key files). The overview lists deep-dive topics — use doc parameter to load specific ones. Load only what you need.",
+          "ALWAYS call this FIRST before other git tools. Get curated documentation about a repository. Call with just repo name for overview, or with doc parameter for a specific topic deep-dive. Much faster and more comprehensive than searching code directly.",
         input_schema: {
           type: "object",
           properties: {
@@ -368,11 +384,19 @@ export default class GitReposPlugin implements ToolPlugin {
     ];
     if (this.knowledgeDocs.size > 0) {
       lines.push(
-        "Use get_repo_knowledge to understand a repo before diving into code:",
-        "- Call with just repo name for a comprehensive overview (architecture, structure, key files)",
-        "- The overview lists available deep-dive topics — use doc parameter to load specific ones",
-        "- Load only what you need to answer the question — avoid loading all topics at once"
+        "",
+        "**IMPORTANT: ALWAYS call get_repo_knowledge FIRST before using any other git tool.** This is the fastest way to understand a repo.",
+        "- Call with just repo name to get a comprehensive overview (architecture, structure, key files)",
+        "- Call with doc parameter to load a specific deep-dive topic",
+        "- Only fall back to git_search/git_file_read if the knowledge docs don't answer your question",
       );
+      // List available knowledge per repo
+      for (const [repo, docs] of this.knowledgeDocs) {
+        const docNames = Array.from(docs.keys()).filter(k => k !== "index");
+        if (docNames.length > 0) {
+          lines.push(`- **${repo}** knowledge topics: ${docNames.join(", ")}`);
+        }
+      }
     }
     return lines.join("\n");
   }
@@ -477,6 +501,7 @@ export default class GitReposPlugin implements ToolPlugin {
     if (!this.knowledgeGenerator) return;
 
     const maxTopics = this.config.knowledge?.generation?.max_topics ?? 8;
+    const language = this.config.knowledge?.generation?.language ?? "Chinese";
 
     for (const repo of this.config.repos) {
       const repoPath = this.repoPaths.get(repo.name);
@@ -484,7 +509,7 @@ export default class GitReposPlugin implements ToolPlugin {
 
       try {
         console.log(`[${this.name}] Generating knowledge for ${repo.name}...`);
-        await this.knowledgeGenerator.generate(repo.name, repoPath, maxTopics);
+        await this.knowledgeGenerator.generate(repo.name, repoPath, maxTopics, language);
         console.log(`[${this.name}] Knowledge generated for ${repo.name}`);
       } catch (e: any) {
         console.error(`[${this.name}] Knowledge generation failed for ${repo.name}: ${e.message}`);

@@ -18,6 +18,7 @@ admins: ["ou_xxxxxxx"]
 
 # Knowledge system — per-repo curated documentation
 # Knowledge lives in a separate git repo for flexibility
+# See docs/knowledge.md for the full generation guide
 knowledge:
   repo_url: "git@github.com:org/project-knowledge.git"
   branch: "main"
@@ -33,3 +34,4 @@ knowledge:
     cron: "0 3 * * *"            # daily at 3am, null to disable
     max_topics: 8
     context_token_budget: 50000
+    language: Chinese             # output language (default: Chinese)

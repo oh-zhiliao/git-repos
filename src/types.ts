@@ -25,6 +25,7 @@ export interface KnowledgeGenerationConfig {
   cron: string | null;
   max_topics: number;
   context_token_budget: number;
+  language: string;
 }
 
 export interface KnowledgeConfig {

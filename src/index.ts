@@ -15,6 +15,8 @@ import { Tracker } from "./tracker.js";
 import { Scanner } from "./scanner.js";
 import { Notifier } from "./notifier.js";
 import { createCommandHandler } from "./repo-commands.js";
+import { KnowledgeSync } from "./knowledge-sync.js";
+import { KnowledgeGenerator } from "./knowledge-generator.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = resolve(__dirname, "..");
@@ -56,6 +58,10 @@ export default class GitReposPlugin implements ToolPlugin {
   private repoPaths = new Map<string, string>();
   private knowledgeDocs = new Map<string, Map<string, TopicDocMeta>>();
   private knowledgeCatalogs = new Map<string, string>();
+  private knowledgeSync: KnowledgeSync | null = null;
+  private knowledgeGenerator: KnowledgeGenerator | null = null;
+  private knowledgeDir: string | null = null;
+  private generationTimerId: ReturnType<typeof setTimeout> | null = null;
 
   async init(config: Record<string, any>): Promise<void> {
     if (!config.repos || !Array.isArray(config.repos) || config.repos.length === 0) {
@@ -106,7 +112,29 @@ export default class GitReposPlugin implements ToolPlugin {
       this.config.admins ?? []
     );
 
-    // Load knowledge docs
+    // Init knowledge system
+    const kc = this.config.knowledge;
+    if (kc) {
+      this.knowledgeSync = new KnowledgeSync({
+        repoUrl: kc.repo_url,
+        branch: kc.branch,
+        localDir: kc.local_dir,
+        sshKeyPath: this.config.ssh_key_path,
+        pullIntervalMinutes: kc.sync?.pull_interval_minutes ?? 30,
+        onReload: () => this.loadKnowledge(),
+      });
+
+      try {
+        await this.knowledgeSync.init();
+        this.knowledgeDir = kc.local_dir;
+        console.log(`[${this.name}] Knowledge repo initialized at ${kc.local_dir}`);
+      } catch (e: any) {
+        console.warn(`[${this.name}] Knowledge repo init failed: ${e.message}. Continuing without knowledge.`);
+        this.knowledgeDir = null;
+      }
+    }
+
+    // Load knowledge (from external dir if configured, else from bundled dir)
     this.loadKnowledge();
   }
 
@@ -140,11 +168,37 @@ export default class GitReposPlugin implements ToolPlugin {
       if (Number.isNaN(cronHour)) cronHour = 2;
     }
     this.scanner.startDaily(cronHour);
+
+    // Start knowledge sync
+    if (this.knowledgeSync) {
+      this.knowledgeSync.startPeriodicPull();
+    }
+
+    // Init knowledge generator if generation is enabled
+    const genConfig = this.config.knowledge?.generation;
+    if (genConfig?.enabled && context.callLLM) {
+      this.knowledgeGenerator = new KnowledgeGenerator(
+        this.config.knowledge!.local_dir,
+        {
+          callLLM: (options) => context.callLLM!(options),
+        }
+      );
+
+      // Schedule cron-based generation
+      if (genConfig.cron) {
+        this.scheduleKnowledgeGeneration(genConfig.cron);
+      }
+    }
   }
 
   async stop(): Promise<void> {
     this.tracker?.stop();
     this.scanner?.stop();
+    this.knowledgeSync?.stop();
+    if (this.generationTimerId) {
+      clearTimeout(this.generationTimerId);
+      this.generationTimerId = null;
+    }
   }
 
   async destroy(): Promise<void> {
@@ -231,7 +285,7 @@ export default class GitReposPlugin implements ToolPlugin {
       tools.push({
         name: "get_repo_knowledge",
         description:
-          "Get curated documentation about a repository (architecture, conventions, deployment notes). Use to understand a repo's structure before diving into code.",
+          "Get curated documentation about a repository. Call with just repo name for a comprehensive overview (architecture, structure, key files). The overview lists deep-dive topics — use doc parameter to load specific ones. Load only what you need.",
         input_schema: {
           type: "object",
           properties: {
@@ -298,7 +352,12 @@ export default class GitReposPlugin implements ToolPlugin {
       "Use git tools (git_file_read, git_search, git_log, git_diff, git_blame) to explore code.",
     ];
     if (this.knowledgeDocs.size > 0) {
-      lines.push("Use get_repo_knowledge for curated documentation about each repository.");
+      lines.push(
+        "Use get_repo_knowledge to understand a repo before diving into code:",
+        "- Call with just repo name for a comprehensive overview (architecture, structure, key files)",
+        "- The overview lists available deep-dive topics — use doc parameter to load specific ones",
+        "- Load only what you need to answer the question — avoid loading all topics at once"
+      );
     }
     return lines.join("\n");
   }
@@ -306,11 +365,17 @@ export default class GitReposPlugin implements ToolPlugin {
   // --- Knowledge loading ---
 
   private loadKnowledge(): void {
-    if (!existsSync(KNOWLEDGE_DIR)) return;
+    const dir = this.knowledgeDir ?? KNOWLEDGE_DIR;
+    if (!existsSync(dir)) return;
 
-    for (const repoDir of readdirSync(KNOWLEDGE_DIR, { withFileTypes: true })) {
+    // Clear existing state
+    this.knowledgeDocs.clear();
+    this.knowledgeCatalogs.clear();
+
+    for (const repoDir of readdirSync(dir, { withFileTypes: true })) {
       if (!repoDir.isDirectory()) continue;
-      const repoKnowledgePath = join(KNOWLEDGE_DIR, repoDir.name);
+      if (repoDir.name.startsWith(".")) continue; // skip .tmp dirs and .git
+      const repoKnowledgePath = join(dir, repoDir.name);
       const docs = new Map<string, TopicDocMeta>();
       const catalogLines: string[] = [];
 
@@ -324,7 +389,9 @@ export default class GitReposPlugin implements ToolPlugin {
         const description = meta.description || "";
 
         docs.set(docName, { title, description, filePath });
-        catalogLines.push(`- **${docName}**: ${title}${description ? ` — ${description}` : ""}`);
+        if (docName !== "index") {
+          catalogLines.push(`- **${docName}**: ${title}${description ? ` — ${description}` : ""}`);
+        }
       }
 
       if (docs.size > 0) {
@@ -342,19 +409,83 @@ export default class GitReposPlugin implements ToolPlugin {
   private getRepoKnowledge(repo: string, doc?: string): string {
     const repoDocs = this.knowledgeDocs.get(repo);
     if (!repoDocs) {
-      return `No curated knowledge found for repo "${repo}".`;
+      return `No curated knowledge found for repo "${repo}". Use git tools to explore the code directly.`;
     }
 
     if (!doc) {
+      // Return index.md if it exists, otherwise return catalog
+      const indexDoc = repoDocs.get("index");
+      if (indexDoc) {
+        return readFileSync(indexDoc.filePath, "utf-8");
+      }
+      // Fallback: catalog of available docs
       const catalog = this.knowledgeCatalogs.get(repo) ?? "";
       return `Available docs for ${repo}:\n${catalog}\n\nUse get_repo_knowledge with doc parameter to read a specific document.`;
     }
 
     const docMeta = repoDocs.get(doc);
     if (!docMeta) {
-      return `Document "${doc}" not found for repo "${repo}". Available: ${Array.from(repoDocs.keys()).join(", ")}`;
+      return `Document "${doc}" not found for repo "${repo}". Available: ${Array.from(repoDocs.keys()).filter(k => k !== "index").join(", ")}`;
     }
 
     return readFileSync(docMeta.filePath, "utf-8");
+  }
+
+  // --- Knowledge generation scheduling ---
+
+  private scheduleKnowledgeGeneration(cronExpr: string): void {
+    const parts = cronExpr.split(" ");
+    let cronHour = 3;
+    if (parts.length >= 2) cronHour = parseInt(parts[1], 10);
+    if (Number.isNaN(cronHour)) cronHour = 3;
+
+    const scheduleNext = () => {
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(cronHour, 0, 0, 0);
+      if (next <= now) next.setDate(next.getDate() + 1);
+
+      const delay = next.getTime() - now.getTime();
+      console.log(`[${this.name}] Knowledge generation: next run at ${next.toISOString()}`);
+
+      this.generationTimerId = setTimeout(() => {
+        this.generateAllKnowledge()
+          .catch((e) => console.error(`[${this.name}] Knowledge generation error:`, e))
+          .finally(scheduleNext);
+      }, delay);
+    };
+
+    scheduleNext();
+  }
+
+  async generateAllKnowledge(): Promise<void> {
+    if (!this.knowledgeGenerator) return;
+
+    const maxTopics = this.config.knowledge?.generation?.max_topics ?? 8;
+
+    for (const repo of this.config.repos) {
+      const repoPath = this.repoPaths.get(repo.name);
+      if (!repoPath) continue;
+
+      try {
+        console.log(`[${this.name}] Generating knowledge for ${repo.name}...`);
+        await this.knowledgeGenerator.generate(repo.name, repoPath, maxTopics);
+        console.log(`[${this.name}] Knowledge generated for ${repo.name}`);
+      } catch (e: any) {
+        console.error(`[${this.name}] Knowledge generation failed for ${repo.name}: ${e.message}`);
+      }
+    }
+
+    // Commit and push
+    if (this.knowledgeSync) {
+      try {
+        await this.knowledgeSync.commitAndPush(`knowledge: update generated docs (${new Date().toISOString()})`);
+      } catch (e: any) {
+        console.error(`[${this.name}] Knowledge commit/push failed: ${e.message}`);
+      }
+    }
+
+    // Hot-reload
+    this.loadKnowledge();
   }
 }

@@ -106,11 +106,15 @@ export default class GitReposPlugin implements ToolPlugin {
     // Init sub-components
     this.store = new RepoStore(join(this.config.repos_dir, ".git-repos-state.db"));
     this.gitTools = new GitTools(this.config.repos, this.repoPaths);
-    this.commandHandler = createCommandHandler(
-      this.config.repos,
-      this.store,
-      this.config.admins ?? []
-    );
+    this.commandHandler = createCommandHandler({
+      repos: this.config.repos,
+      store: this.store,
+      admins: this.config.admins ?? [],
+      repoPaths: this.repoPaths,
+      knowledgeDir: this.knowledgeDir,
+      knowledgeGenerator: null,
+      knowledgeSync: null,
+    });
 
     // Init knowledge system
     const kc = this.config.knowledge;
@@ -189,6 +193,17 @@ export default class GitReposPlugin implements ToolPlugin {
         this.scheduleKnowledgeGeneration(genConfig.cron);
       }
     }
+
+    // Recreate command handler with full deps (generator/sync now available)
+    this.commandHandler = createCommandHandler({
+      repos: this.config.repos,
+      store: this.store,
+      admins: this.config.admins ?? [],
+      repoPaths: this.repoPaths,
+      knowledgeDir: this.knowledgeDir,
+      knowledgeGenerator: this.knowledgeGenerator,
+      knowledgeSync: this.knowledgeSync,
+    });
   }
 
   async stop(): Promise<void> {

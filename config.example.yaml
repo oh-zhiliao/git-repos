@@ -15,3 +15,21 @@ notifications:
   my-project: ["oc_xxxxx"]
 
 admins: ["ou_xxxxxxx"]
+
+# Knowledge system — per-repo curated documentation
+# Knowledge lives in a separate git repo for flexibility
+knowledge:
+  repo_url: "git@github.com:org/project-knowledge.git"
+  branch: "main"
+  local_dir: "./data/knowledge"
+
+  # Sync settings (always active when knowledge is configured)
+  sync:
+    pull_interval_minutes: 30
+
+  # Internal generation (optional — set enabled: false for external-only mode)
+  generation:
+    enabled: true
+    cron: "0 3 * * *"            # daily at 3am, null to disable
+    max_topics: 8
+    context_token_budget: 50000

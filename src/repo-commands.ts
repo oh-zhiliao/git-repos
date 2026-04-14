@@ -120,7 +120,10 @@ export function createCommandHandler(deps: CommandDeps): PluginCommandHandler {
               if (fmMatch) {
                 const gaMatch = fmMatch[1].match(/generated_at:\s*"?([^"\n]+)"?/);
                 const gmMatch = fmMatch[1].match(/generator_model:\s*"?([^"\n]+)"?/);
-                if (gaMatch) generatedAt = gaMatch[1];
+                if (gaMatch) {
+                  const d = new Date(gaMatch[1]);
+                  generatedAt = isNaN(d.getTime()) ? gaMatch[1] : d.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+                }
                 if (gmMatch) model = gmMatch[1];
               }
             }

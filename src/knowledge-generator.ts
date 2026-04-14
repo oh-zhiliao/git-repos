@@ -13,6 +13,16 @@ import {
 import { join, basename } from "node:path";
 import { promisify } from "node:util";
 
+// Format Date as local ISO string (e.g. "2026-04-15T09:45:00+08:00")
+function localISO(d: Date = new Date()): string {
+  const off = d.getTimezoneOffset();
+  const sign = off <= 0 ? "+" : "-";
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const mm = String(Math.abs(off) % 60).padStart(2, "0");
+  const local = new Date(d.getTime() - off * 60_000);
+  return local.toISOString().replace("Z", `${sign}${hh}:${mm}`);
+}
+
 const SAFE_REPO_NAME = /^[a-zA-Z0-9._-]+$/;
 
 const execFileAsync = promisify(execFile);
@@ -336,7 +346,7 @@ export class KnowledgeGenerator {
     maxTopics: number,
     language: string
   ): Promise<{ indexContent: string; topicPlan: TopicPlan[] }> {
-    const now = new Date().toISOString();
+    const now = localISO();
     const system = `You are a technical documentation expert. Your task is to analyze a code repository and produce a comprehensive knowledge overview document.
 
 Write ALL content in ${language}. Use ${language} for headings, descriptions, and explanations. Code snippets and technical identifiers (file paths, function names, etc.) stay in their original form.
@@ -416,7 +426,7 @@ ${context}`;
     indexContent: string,
     language: string
   ): Promise<string> {
-    const now = new Date().toISOString();
+    const now = localISO();
     const system = `You are a technical documentation expert. Your task is to produce a focused, deep-dive document about a specific aspect of a code repository.
 
 Write ALL content in ${language}. Use ${language} for headings, descriptions, and explanations. Code snippets and technical identifiers (file paths, function names, etc.) stay in their original form.

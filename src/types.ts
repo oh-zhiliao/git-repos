@@ -13,6 +13,26 @@ export interface GitReposPluginConfig {
   memo_url: string;
   notifications?: Record<string, string[]>;
   admins?: string[];
+  knowledge?: KnowledgeConfig;
+}
+
+export interface KnowledgeSyncConfig {
+  pull_interval_minutes: number;
+}
+
+export interface KnowledgeGenerationConfig {
+  enabled: boolean;
+  cron: string | null;
+  max_topics: number;
+  context_token_budget: number;
+}
+
+export interface KnowledgeConfig {
+  repo_url: string;
+  branch: string;
+  local_dir: string;
+  sync: KnowledgeSyncConfig;
+  generation?: KnowledgeGenerationConfig;
 }
 
 export interface CommitInfo {

@@ -263,3 +263,122 @@ describe("KnowledgeGenerator", () => {
     await firstGen;
   });
 });
+
+// ---------------------------------------------------------------------------
+// Integration test: full flow with a realistic Go-like repo
+// ---------------------------------------------------------------------------
+
+const GO_INDEX = `---
+title: Go Handler Service Knowledge
+description: Overview of test-repo
+generated_at: 2026-04-14T00:00:00Z
+generator_model: test-model
+---
+
+# Go Handler Service
+
+A simple HTTP service written in Go.
+
+## Architecture
+
+Single binary with a main entry point and handler layer.
+
+TOPIC_PLAN:
+- handlers.md: Deep dive into the HTTP handler logic
+`;
+
+const HANDLERS_DOC = `---
+title: HTTP Handlers
+description: Deep dive into the HTTP handler logic
+topic: handlers
+generated_at: 2026-04-14T00:00:00Z
+generator_model: test-model
+---
+
+# HTTP Handlers
+
+The handler layer processes incoming HTTP requests and delegates to service logic.
+`;
+
+describe("KnowledgeGenerator integration", () => {
+  let tmpDir: string;
+  let repoPath: string;
+  let knowledgeDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(
+      tmpdir(),
+      `kg-integration-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    repoPath = join(tmpDir, "go-service");
+    knowledgeDir = join(tmpDir, "knowledge");
+
+    // Create a realistic Go-like repo structure
+    createGitRepo(repoPath, {
+      "go.mod": "module github.com/example/go-service\n\ngo 1.21\n",
+      "README.md":
+        "# Go Handler Service\n\nA minimal HTTP service in Go.\n",
+      "cmd/main.go":
+        'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("hello")\n}\n',
+      "src/handler.go":
+        'package src\n\nimport "net/http"\n\nfunc Handler(w http.ResponseWriter, r *http.Request) {\n\tw.Write([]byte("ok"))\n}\n',
+    });
+
+    mkdirSync(knowledgeDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("generates index.md and topic docs, passing repo context to LLM", async () => {
+    const capturedPrompts: string[] = [];
+    let callCount = 0;
+
+    const mockLLM = vi.fn(
+      async (options: { system: string; prompt: string }) => {
+        capturedPrompts.push(options.prompt);
+        callCount++;
+        if (callCount === 1) {
+          // First call: index generation — verify context contains key files
+          expect(options.prompt).toContain("go.mod");
+          expect(options.prompt).toContain("README.md");
+          return GO_INDEX;
+        }
+        // Second call: topic doc
+        return HANDLERS_DOC;
+      }
+    );
+
+    const generator = new KnowledgeGenerator(knowledgeDir, {
+      callLLM: mockLLM,
+    });
+
+    await generator.generate("test-repo", repoPath, 5);
+
+    const repoKnowledgeDir = join(knowledgeDir, "test-repo");
+
+    // index.md must exist with valid frontmatter fields
+    const indexPath = join(repoKnowledgeDir, "index.md");
+    expect(existsSync(indexPath)).toBe(true);
+    const indexContent = readFileSync(indexPath, "utf-8");
+    expect(indexContent).toContain("generated_at:");
+    expect(indexContent).toContain("generator_model:");
+    // TOPIC_PLAN section must be stripped from the written file
+    expect(indexContent).not.toContain("TOPIC_PLAN:");
+
+    // handlers.md must exist (the single topic from GO_INDEX)
+    const handlersPath = join(repoKnowledgeDir, "handlers.md");
+    expect(existsSync(handlersPath)).toBe(true);
+    const handlersContent = readFileSync(handlersPath, "utf-8");
+    expect(handlersContent).toContain("generated_at:");
+    expect(handlersContent).toContain("generator_model:");
+
+    // LLM must have been called exactly twice (1 index + 1 topic)
+    expect(mockLLM).toHaveBeenCalledTimes(2);
+
+    // The first prompt must include go.mod and README.md from the repo context
+    expect(capturedPrompts[0]).toContain("go.mod");
+    expect(capturedPrompts[0]).toContain("README.md");
+  });
+});

@@ -1,0 +1,17 @@
+repos:
+  - name: "my-project"
+    url: "git@github.com:org/my-project.git"
+    branch: "main"
+
+ssh_key_path: "./data/deploy_key"
+repos_dir: "./data/repos"
+
+poll_interval_minutes: 5
+deep_scan_cron: "0 2 * * *"
+
+memo_url: "http://127.0.0.1:8090"
+
+notifications:
+  my-project: ["oc_xxxxx"]
+
+admins: ["ou_xxxxxxx"]

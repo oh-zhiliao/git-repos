@@ -133,8 +133,8 @@ export function createCommandHandler(deps: CommandDeps): PluginCommandHandler {
             if (repoPath && generatedAt !== "未知") {
               try {
                 const latestCommitDate = execFileSync(
-                  "git", ["log", "-1", "--format=%aI"],
-                  { cwd: repoPath, timeout: 10_000 }
+                  "git", ["--no-pager", "log", "-1", "--format=%aI"],
+                  { cwd: repoPath, timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }
                 ).toString().trim();
 
                 if (new Date(latestCommitDate) > new Date(generatedAt)) {

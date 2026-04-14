@@ -7,9 +7,13 @@ import {
   rmSync,
   renameSync,
   readdirSync,
+  openSync,
+  closeSync,
 } from "node:fs";
 import { join, basename } from "node:path";
 import { promisify } from "node:util";
+
+const SAFE_REPO_NAME = /^[a-zA-Z0-9._-]+$/;
 
 const execFileAsync = promisify(execFile);
 const GIT_TIMEOUT = 30_000;
@@ -120,6 +124,11 @@ export class KnowledgeGenerator {
     repoPath: string,
     maxTopics = 10
   ): Promise<void> {
+    // Validate repoName to prevent path traversal
+    if (!SAFE_REPO_NAME.test(repoName)) {
+      throw new Error(`Invalid repo name: "${repoName}"`);
+    }
+
     // In-memory lock check
     if (inProgressRepos.has(repoName)) {
       throw new Error(`Knowledge generation for "${repoName}" is already in progress`);
@@ -182,12 +191,17 @@ export class KnowledgeGenerator {
         }
       }
 
-      // Atomic swap: remove old dir, rename tmp to final
+      // Atomic swap: rename old to .old, rename tmp to final, then cleanup
       const finalDir = join(this.knowledgeDir, repoName);
+      const oldDir = join(this.knowledgeDir, `.old-${repoName}-${timestamp}`);
       if (existsSync(finalDir)) {
-        rmSync(finalDir, { recursive: true, force: true });
+        renameSync(finalDir, oldDir);
       }
       renameSync(tmpDir, finalDir);
+      // Cleanup old dir (non-critical, best-effort)
+      if (existsSync(oldDir)) {
+        rmSync(oldDir, { recursive: true, force: true });
+      }
     } catch (err) {
       // Clean up tmp dir on total failure
       if (existsSync(tmpDir)) {
@@ -284,10 +298,7 @@ export class KnowledgeGenerator {
             ".",
             "-type",
             "f",
-            ...EXCLUDED_DIRS
-              .values()
-              .toArray()
-              .flatMap((d) => ["-not", "-path", `./${d}/*`]),
+            ...[...EXCLUDED_DIRS].flatMap((d) => ["-not", "-path", `./${d}/*`]),
           ],
           { cwd: repoPath, timeout: FIND_TIMEOUT }
         );
@@ -425,27 +436,39 @@ ${topicContext}`;
   private acquireFileLock(repoName: string, lockPath: string): void {
     mkdirSync(this.knowledgeDir, { recursive: true });
 
-    if (existsSync(lockPath)) {
-      try {
-        const raw = readFileSync(lockPath, "utf-8");
-        const info: LockInfo = JSON.parse(raw);
-        const age = Date.now() - info.timestamp;
-        if (age < LOCK_STALE_MS) {
-          throw new Error(
-            `Knowledge generation for "${repoName}" is already in progress (PID ${info.pid})`
-          );
-        }
-        // Stale lock — remove it
-        console.warn(
-          `[knowledge-generator] Removing stale lock for ${repoName} (PID ${info.pid}, age ${Math.round(age / 60000)}min)`
-        );
-      } catch (err: any) {
-        if (err.message.includes("already in progress")) throw err;
-        // JSON parse error or other — treat as stale, overwrite
-      }
+    const info: LockInfo = { pid: process.pid, timestamp: Date.now() };
+
+    // Try atomic creation with O_EXCL (wx flag)
+    try {
+      const fd = openSync(lockPath, "wx");
+      writeFileSync(fd, JSON.stringify(info), "utf-8");
+      closeSync(fd);
+      return;
+    } catch (err: any) {
+      if (err.code !== "EEXIST") throw err;
+      // Lock file exists — check staleness
     }
 
-    const info: LockInfo = { pid: process.pid, timestamp: Date.now() };
+    // Lock exists: check if stale
+    try {
+      const raw = readFileSync(lockPath, "utf-8");
+      const existing: LockInfo = JSON.parse(raw);
+      const age = Date.now() - existing.timestamp;
+      if (age < LOCK_STALE_MS) {
+        throw new Error(
+          `Knowledge generation for "${repoName}" is already in progress (PID ${existing.pid})`
+        );
+      }
+      // Stale lock — override it
+      console.warn(
+        `[knowledge-generator] Removing stale lock for ${repoName} (PID ${existing.pid}, age ${Math.round(age / 60000)}min)`
+      );
+    } catch (err: any) {
+      if (err.message.includes("already in progress")) throw err;
+      // JSON parse error — treat as stale
+    }
+
+    // Override stale lock
     writeFileSync(lockPath, JSON.stringify(info), "utf-8");
   }
 

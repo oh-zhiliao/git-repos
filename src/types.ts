@@ -31,7 +31,7 @@ export interface KnowledgeConfig {
   repo_url: string;
   branch: string;
   local_dir: string;
-  sync: KnowledgeSyncConfig;
+  sync?: KnowledgeSyncConfig;
   generation?: KnowledgeGenerationConfig;
 }
 

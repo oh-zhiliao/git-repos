@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
 
 const execFileAsync = promisify(execFile);
 const GIT_TIMEOUT = 60_000;
@@ -28,8 +29,17 @@ export class KnowledgeSync {
 
   /** Clone or pull the knowledge repo. Call once at startup. */
   async init(): Promise<void> {
-    if (existsSync(this.deps.localDir + "/.git")) {
-      await this.gitExec(["pull", "--ff-only", "origin", this.deps.branch], this.deps.localDir);
+    if (existsSync(join(this.deps.localDir, ".git"))) {
+      try {
+        await this.gitExec(["pull", "--ff-only", "origin", this.deps.branch], this.deps.localDir);
+      } catch {
+        console.warn("[git-repos] Knowledge pull failed on init, re-cloning");
+        rmSync(this.deps.localDir, { recursive: true, force: true });
+        await this.gitExec([
+          "clone", "--single-branch", "-b", this.deps.branch,
+          this.deps.repoUrl, this.deps.localDir,
+        ]);
+      }
     } else {
       await this.gitExec([
         "clone", "--single-branch", "-b", this.deps.branch,
@@ -58,7 +68,7 @@ export class KnowledgeSync {
   /** Pull once. Returns true if files changed and reload was triggered. */
   async pullOnce(): Promise<boolean> {
     const dir = this.deps.localDir;
-    if (!existsSync(dir + "/.git")) return false;
+    if (!existsSync(join(dir, ".git"))) return false;
 
     // Check for unpushed local commits (from internal generation)
     try {
@@ -111,6 +121,12 @@ export class KnowledgeSync {
     }
 
     await this.gitExec(["commit", "-m", message], dir);
+    // Pull --rebase before push to handle remote changes
+    try {
+      await this.gitExec(["pull", "--rebase", "origin", this.deps.branch], dir);
+    } catch {
+      console.warn("[git-repos] Pull --rebase failed before push, attempting push anyway");
+    }
     await this.gitExec(["push", "origin", this.deps.branch], dir);
   }
 

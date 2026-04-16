@@ -76,7 +76,7 @@ export class Tracker {
   private gitEnv(): Record<string, string> {
     return {
       ...(process.env as Record<string, string>),
-      GIT_SSH_COMMAND: `ssh -i ${this.deps.sshKeyPath} -o StrictHostKeyChecking=no`,
+      GIT_SSH_COMMAND: `ssh -i ${this.deps.sshKeyPath} -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3`,
     };
   }
 

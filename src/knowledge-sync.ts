@@ -133,7 +133,7 @@ export class KnowledgeSync {
   private async gitExec(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
     const env: Record<string, string> = { ...process.env as Record<string, string> };
     if (this.deps.sshKeyPath) {
-      env.GIT_SSH_COMMAND = `ssh -i ${this.deps.sshKeyPath} -o StrictHostKeyChecking=no`;
+      env.GIT_SSH_COMMAND = `ssh -i ${this.deps.sshKeyPath} -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3`;
     }
     return execFileAsync("git", args, {
       cwd,

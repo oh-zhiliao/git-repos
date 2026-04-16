@@ -96,7 +96,7 @@ export default class GitReposPlugin implements ToolPlugin {
           timeout: 120_000,
           env: {
             ...process.env,
-            GIT_SSH_COMMAND: `ssh -i ${this.config.ssh_key_path} -o StrictHostKeyChecking=no`,
+            GIT_SSH_COMMAND: `ssh -i ${this.config.ssh_key_path} -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3`,
           },
         });
       }

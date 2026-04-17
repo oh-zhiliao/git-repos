@@ -4,13 +4,23 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint src/ tests/ --max-warnings 0",
+    "lint:fix": "eslint src/ tests/ --fix",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test:all": "npm run lint && npm run typecheck && npm run test",
+    "preflight": "npm run test:all"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.0",
-    "vitest": "^3.0.0"
+    "eslint": "^10.2.0",
+    "globals": "^17.5.0",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.58.2",
+    "vitest": "^4.1.4"
   }
 }

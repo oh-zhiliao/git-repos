@@ -164,7 +164,7 @@ export class KnowledgeGenerator {
     repoPath: string,
     maxTopics: number,
     language: string,
-    lockPath: string
+    _lockPath: string
   ): Promise<void> {
     // Collect context
     const context = await this.collectContext(repoPath);

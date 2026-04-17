@@ -8,7 +8,7 @@ import type {
   PluginContext,
   PluginCommandHandler,
 } from "../../agent/src/agent/tool-plugin.js";
-import type { GitReposPluginConfig, RepoConfig } from "./types.js";
+import type { GitReposPluginConfig } from "./types.js";
 import { GitTools } from "./git-tools.js";
 import { RepoStore } from "./repo-store.js";
 import { Tracker } from "./tracker.js";
@@ -74,7 +74,7 @@ export default class GitReposPlugin implements ToolPlugin {
     this.config = config as GitReposPluginConfig;
 
     // Validate branch names (prevent command injection)
-    const SAFE_BRANCH = /^[a-zA-Z0-9._\/-]+$/;
+    const SAFE_BRANCH = /^[a-zA-Z0-9._/-]+$/;
     for (const repo of this.config.repos) {
       if (!SAFE_BRANCH.test(repo.branch)) {
         throw new Error(`Invalid branch name for ${repo.name}: "${repo.branch}"`);

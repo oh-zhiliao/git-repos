@@ -24,7 +24,7 @@ export function createCommandHandler(deps: CommandDeps): PluginCommandHandler {
     subcommands: {
       list: {
         description: "列出所有配置的仓库及状态",
-        async handle(args: string[], ctx: CommandCallContext): Promise<string> {
+        async handle(_args: string[], _ctx: CommandCallContext): Promise<string> {
           if (deps.repos.length === 0) {
             return "没有配置仓库。请在 git-repos/config.yaml 中添加。";
           }
@@ -40,7 +40,7 @@ export function createCommandHandler(deps: CommandDeps): PluginCommandHandler {
       },
       status: {
         description: "显示详细的仓库跟踪状态",
-        async handle(args: string[], ctx: CommandCallContext): Promise<string> {
+        async handle(_args: string[], _ctx: CommandCallContext): Promise<string> {
           const lines = deps.repos.map((r) => {
             const state = deps.store.getState(r.name);
             const poll = state?.last_poll_at ? new Date(state.last_poll_at).toLocaleString() : "从未";
@@ -98,7 +98,7 @@ export function createCommandHandler(deps: CommandDeps): PluginCommandHandler {
       },
       "knowledge-status": {
         description: "显示各仓库知识文档状态",
-        async handle(args: string[], ctx: CommandCallContext): Promise<string> {
+        async handle(_args: string[], _ctx: CommandCallContext): Promise<string> {
           if (!deps.knowledgeDir || !existsSync(deps.knowledgeDir)) {
             return "知识系统未配置或知识目录不存在。";
           }

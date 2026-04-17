@@ -6,7 +6,7 @@ import type { RepoConfig } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 const EXEC_TIMEOUT = 30_000;
-const SAFE_COMMIT_RANGE = /^[a-zA-Z0-9~.^\/\-_]+$/;
+const SAFE_COMMIT_RANGE = /^[a-zA-Z0-9~.^/\-_]+$/;
 const MAX_SEARCH_QUERY_LENGTH = 200;
 
 export class GitTools {

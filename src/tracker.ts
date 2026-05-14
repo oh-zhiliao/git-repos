@@ -110,11 +110,20 @@ export class Tracker {
 
     if (newCommits.length === 0) return;
 
-    // Pull (fast-forward)
-    await execFileAsync("git", ["merge", "--ff-only", `origin/${repo.branch}`], {
-      cwd: repoPath,
-      timeout: GIT_TIMEOUT,
-    });
+    // Prefer fast-forward updates. If the local cache diverged, force it back to
+    // the remote branch so the tracker can keep following the latest upstream state.
+    try {
+      await execFileAsync("git", ["merge", "--ff-only", `origin/${repo.branch}`], {
+        cwd: repoPath,
+        timeout: GIT_TIMEOUT,
+      });
+    } catch {
+      console.warn(`[git-repos] ${repo.name}: local branch diverged, resetting to origin/${repo.branch}`);
+      await execFileAsync("git", ["reset", "--hard", `origin/${repo.branch}`], {
+        cwd: repoPath,
+        timeout: GIT_TIMEOUT,
+      });
+    }
 
     // Build memo entries with diff stats
     const memoEntries: MemoCommitEntry[] = [];

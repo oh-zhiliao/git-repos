@@ -13,6 +13,7 @@ describe("Scanner", () => {
     beforeEach(() => {
       tmpDir = join(tmpdir(), `scanner-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
       mkdirSync(tmpDir, { recursive: true });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 
       scanner = new Scanner({
         repos: [],
@@ -24,6 +25,7 @@ describe("Scanner", () => {
 
     afterEach(() => {
       rmSync(tmpDir, { recursive: true, force: true });
+      vi.unstubAllGlobals();
     });
 
     it("lists files recursively", () => {
@@ -84,5 +86,45 @@ describe("Scanner", () => {
     });
     scanner.startDaily(3);
     scanner.stop();
+  });
+
+  it("authenticates scan and decay requests to memo", async () => {
+    const tmpDir = join(tmpdir(), `scanner-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(join(tmpDir, "README.md"), "hello");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+
+    try {
+      const store = { updateScanTime: vi.fn() } as unknown as RepoStore;
+      const scanner = new Scanner({
+        repos: [{ name: "app", url: "git@example.com:org/app.git", branch: "main" }],
+        repoPaths: new Map([["app", tmpDir]]),
+        store,
+        memoUrl: "http://localhost:8090",
+        memoAuthToken: "scanner-token",
+      } as any);
+
+      await scanner.scanOnce();
+
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:8090/index/scan",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: "Bearer scanner-token",
+          }),
+        })
+      );
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:8090/index/decay",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: "Bearer scanner-token",
+          }),
+        })
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

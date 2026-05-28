@@ -19,6 +19,7 @@ export interface ScannerDeps {
   repoPaths: Map<string, string>;
   store: RepoStore;
   memoUrl: string;
+  memoAuthToken?: string;
 }
 
 export class Scanner {
@@ -67,7 +68,7 @@ export class Scanner {
         // Trigger memo to scan
         await fetch(`${this.deps.memoUrl}/index/scan`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: this.memoHeaders(),
           body: JSON.stringify({ repo_name: repo.name, repo_path: repoPath }),
           signal: AbortSignal.timeout(60_000),
         });
@@ -76,7 +77,7 @@ export class Scanner {
         const files = this.listFiles(repoPath);
         await fetch(`${this.deps.memoUrl}/index/decay`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: this.memoHeaders(),
           body: JSON.stringify({ repo_name: repo.name, existing_files: files }),
           signal: AbortSignal.timeout(60_000),
         });
@@ -111,5 +112,13 @@ export class Scanner {
         files.push(relative(baseDir, fullPath));
       }
     }
+  }
+
+  private memoHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.deps.memoAuthToken) {
+      headers.Authorization = `Bearer ${this.deps.memoAuthToken}`;
+    }
+    return headers;
   }
 }

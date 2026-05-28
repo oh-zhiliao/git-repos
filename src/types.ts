@@ -11,6 +11,7 @@ export interface GitReposPluginConfig {
   poll_interval_minutes: number;
   deep_scan_cron: string;
   memo_url: string;
+  memo_auth_token?: string;
   notifications?: Record<string, string[]>;
   admins?: string[];
   knowledge?: KnowledgeConfig;

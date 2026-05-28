@@ -58,6 +58,7 @@ export default class GitReposPlugin implements ToolPlugin {
   private repoPaths = new Map<string, string>();
   private knowledgeDocs = new Map<string, Map<string, TopicDocMeta>>();
   private knowledgeCatalogs = new Map<string, string>();
+  private memoAuthToken = "";
   private knowledgeSync: KnowledgeSync | null = null;
   private knowledgeGenerator: KnowledgeGenerator | null = null;
   private knowledgeDir: string | null = null;
@@ -72,6 +73,7 @@ export default class GitReposPlugin implements ToolPlugin {
     if (!config.memo_url) throw new Error("memo_url is required");
 
     this.config = config as GitReposPluginConfig;
+    this.memoAuthToken = this.config.memo_auth_token || process.env.MEMO_AUTH_TOKEN || "";
 
     // Validate branch names (prevent command injection)
     const SAFE_BRANCH = /^[a-zA-Z0-9._/-]+$/;
@@ -164,6 +166,7 @@ export default class GitReposPlugin implements ToolPlugin {
       repoPaths: this.repoPaths,
       store: this.store,
       memoUrl: this.config.memo_url,
+      memoAuthToken: this.memoAuthToken,
       notifications: this.config.notifications ?? {},
       notifier,
       sshKeyPath: this.config.ssh_key_path,
@@ -175,6 +178,7 @@ export default class GitReposPlugin implements ToolPlugin {
       repoPaths: this.repoPaths,
       store: this.store,
       memoUrl: this.config.memo_url,
+      memoAuthToken: this.memoAuthToken,
     });
 
     // Parse cron hour from deep_scan_cron

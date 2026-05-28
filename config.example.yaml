@@ -10,6 +10,7 @@ poll_interval_minutes: 5
 deep_scan_cron: "0 2 * * *"
 
 memo_url: "http://127.0.0.1:8090"
+memo_auth_token: "${MEMO_AUTH_TOKEN}"  # optional; falls back to MEMO_AUTH_TOKEN env var
 
 notifications:
   my-project: ["oc_xxxxx"]

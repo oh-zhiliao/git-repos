@@ -14,7 +14,7 @@
 
 1. 将 `config.example.yaml` 复制为 `config.yaml` 并配置仓库信息
 2. 添加 deploy key 用于 Git 访问（`ssh_key_path`）
-3. 配置 memo 服务地址用于提交存储
+3. 配置 memo 服务地址用于提交存储，并通过 `memo_auth_token` 或 `MEMO_AUTH_TOKEN` 配置共享鉴权令牌
 
 ## 知识系统
 
@@ -58,7 +58,7 @@ Git repository tracking, scanning, and knowledge plugin for [zhiliao](https://gi
 
 1. Copy `config.example.yaml` to `config.yaml` and configure your repos
 2. Add deploy key for git access (`ssh_key_path`)
-3. Configure memo URL for commit storage
+3. Configure memo URL for commit storage, plus the shared auth token via `memo_auth_token` or `MEMO_AUTH_TOKEN`
 
 ## Knowledge System
 

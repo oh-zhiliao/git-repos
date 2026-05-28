@@ -18,6 +18,7 @@ export interface TrackerDeps {
   repoPaths: Map<string, string>;
   store: RepoStore;
   memoUrl: string;
+  memoAuthToken?: string;
   notifications: Record<string, string[]>;
   notifier: Notifier;
   sshKeyPath: string;
@@ -137,7 +138,7 @@ export class Tracker {
     try {
       const resp = await fetch(`${this.deps.memoUrl}/index/commits`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this.memoHeaders(),
         body: JSON.stringify({ repo_name: repo.name, commits: memoEntries }),
         signal: AbortSignal.timeout(30_000),
       });
@@ -155,5 +156,13 @@ export class Tracker {
     // Notify
     const chatIds = this.deps.notifications[repo.name] ?? [];
     await this.deps.notifier.notify(repo.name, newCommits, chatIds);
+  }
+
+  private memoHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.deps.memoAuthToken) {
+      headers.Authorization = `Bearer ${this.deps.memoAuthToken}`;
+    }
+    return headers;
   }
 }

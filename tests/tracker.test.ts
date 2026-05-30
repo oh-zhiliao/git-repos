@@ -66,6 +66,10 @@ describe("Tracker", () => {
         return;
       }
       if (args[0] === "diff") {
+        if (args[1] === "--name-only") {
+          cb(null, { stdout: "doris/roles/complaint/faq.md\nREADME.md\n", stderr: "" });
+          return;
+        }
         cb(null, { stdout: " src/index.ts | 2 +-\n", stderr: "" });
         return;
       }
@@ -89,5 +93,47 @@ describe("Tracker", () => {
         }),
       })
     );
+  });
+
+  it("includes changed files in commit indexing payload", async () => {
+    const sep = "\x1e";
+    execFileMock.mockImplementation((_cmd, args: string[], _opts, cb) => {
+      if (args[0] === "log") {
+        cb(null, { stdout: `abc123${sep}fix auth${sep}alice${sep}2026-05-28T00:00:00Z\n`, stderr: "" });
+        return;
+      }
+      if (args[0] === "diff") {
+        if (args[1] === "--name-only") {
+          cb(null, { stdout: "doris/roles/complaint/faq.md\nREADME.md\n", stderr: "" });
+          return;
+        }
+        cb(null, { stdout: " doris/roles/complaint/faq.md | 2 +-\n README.md | 1 +\n", stderr: "" });
+        return;
+      }
+      cb(null, { stdout: "", stderr: "" });
+    });
+
+    const deps = makeDeps({
+      repos: [{ name: "app", url: "git@example.com:org/app.git", branch: "main" }],
+      repoPaths: new Map([["app", "/tmp/app"]]),
+    } as any);
+    const tracker = new Tracker(deps);
+
+    await tracker.pollOnce();
+
+    const payload = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string);
+    expect(payload).toEqual({
+      repo_name: "app",
+      commits: [
+        {
+          hash: "abc123",
+          message: "fix auth",
+          author: "alice",
+          date: "2026-05-28T00:00:00Z",
+          diff_stat: " doris/roles/complaint/faq.md | 2 +-\n README.md | 1 +\n",
+          changed_files: ["doris/roles/complaint/faq.md", "README.md"],
+        },
+      ],
+    });
   });
 });

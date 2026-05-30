@@ -121,6 +121,7 @@ export class Tracker {
     const memoEntries: MemoCommitEntry[] = [];
     for (const commit of newCommits) {
       let diffStat = "";
+      let changedFiles: string[] = [];
       try {
         const result = await execFileAsync(
           "git",
@@ -131,7 +132,20 @@ export class Tracker {
       } catch {
         // First commit or edge case
       }
-      memoEntries.push({ ...commit, diff_stat: diffStat });
+      try {
+        const result = await execFileAsync(
+          "git",
+          ["diff", "--name-only", `${commit.hash}~1`, commit.hash],
+          { cwd: repoPath, timeout: GIT_TIMEOUT }
+        );
+        changedFiles = result.stdout
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
+      } catch {
+        // First commit or edge case
+      }
+      memoEntries.push({ ...commit, diff_stat: diffStat, changed_files: changedFiles });
     }
 
     // Index to memo service

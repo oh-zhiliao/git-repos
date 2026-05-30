@@ -46,4 +46,5 @@ export interface CommitInfo {
 
 export interface MemoCommitEntry extends CommitInfo {
   diff_stat: string;
+  changed_files: string[];
 }
